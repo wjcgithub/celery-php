@@ -210,7 +210,10 @@ abstract class CeleryAbstract
             $this->backend_connection->disconnect();
             $this->broker_connection->channel->close();
             $this->backend_connection->channel->close();
-        } else if (in_array($this->broker_connection_details['connector'], ['php-amqplib', 'swoole'])) {
+        } else if ($this->broker_connection_details['connector'] == 'php-amqplib') {
+            $this->broker_connection && $this->broker_connection->close();
+            $this->backend_connection && $this->backend_connection->close();
+        } else if ($this->broker_connection_details['connector'] == 'swoole') {
             $this->broker_connection && $this->broker_connection->safeClose();
             $this->backend_connection && $this->backend_connection->safeClose();
         }
