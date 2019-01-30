@@ -1,3 +1,9 @@
+amqplib需要使用这个库　https://github.com/swoole/php-amqplib
+This branch is 2 commits ahead, 92 commits behind php-amqplib:master.
+
+直接使用　php-amqplib 模式链接，并开启            Swoole\Runtime::enableCoroutine();　也可以，但是本人测试有问题，性能你也不好
+
+
 PHP client capable of executing [Celery](http://celeryproject.org/) tasks and reading asynchronous results.
 
 Uses [AMQP extension from PECL](http://www.php.net/manual/en/amqp.setup.php), the [PHP AMQP implementation](https://github.com/videlalvaro/php-amqplib) or Redis and the following settings in Celery:

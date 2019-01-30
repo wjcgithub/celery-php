@@ -16,7 +16,7 @@ if(class_exists('Predis\Autoloader'))
 
 /* Including the PECL connector never fails */
 require_once('amqppeclconnector.php');
-require_once('amqpswoooleconnector.php');
+require_once('amqpswooleconnector.php');
 
 /**
  * Abstraction for AMQP client libraries
