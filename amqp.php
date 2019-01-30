@@ -16,6 +16,7 @@ if(class_exists('Predis\Autoloader'))
 
 /* Including the PECL connector never fails */
 require_once('amqppeclconnector.php');
+require_once('amqpswoooleconnector.php');
 
 /**
  * Abstraction for AMQP client libraries
@@ -62,7 +63,10 @@ abstract class AbstractAMQPConnector
 		{
 			return new RedisConnector();
 		}
-		else
+		elseif($name == 'swoole')
+		{
+			return new AMQPSwooleConnector();
+		}else
 		{
 			throw new Exception('Unknown extension name ' . $name);
 		}
@@ -98,7 +102,7 @@ abstract class AbstractAMQPConnector
 	 * @return object
 	 */
 	abstract function GetConnectionObject($details); // details = array
-	
+
 	/**
 	 * Initialize connection on a given connection object
 	 * @return NULL

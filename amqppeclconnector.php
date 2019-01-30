@@ -61,7 +61,6 @@ class PECLAMQPConnector extends AbstractAMQPConnector
 				}
 			}
 		}
-		print_r($headers);
 		$params['headers'] = $headers;
 
 		$success = $xchg->publish($task, $details['binding'], 0, $params);
