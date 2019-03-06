@@ -99,7 +99,11 @@ class Celery extends CeleryAbstract
      * @param array ssl_options Used only for 'php-amqplib-ssl' connections, an associative array with values as defined here: http://php.net/manual/en/context.ssl.php
      */
 
-    function __construct($host, $login, $password, $vhost, $exchange = 'celery', $binding = 'celery', $port = 5672, $connector = false, $persistent_messages = false, $result_expire = 0, $ssl_options = array())
+    function __construct($host, $login, $password, $vhost,
+                         $exchange = 'celery', $binding = 'celery', $port = 5672,
+                         $confirmAckCallback = null, $confirmNAckCallback = null, $returnCallback = null,
+                         $connector = false, $persistent_messages = false, $result_expire = 0,
+                         $ssl_options = array())
     {
         $broker_connection = array(
             'host' => $host,
@@ -109,6 +113,9 @@ class Celery extends CeleryAbstract
             'exchange' => $exchange,
             'binding' => $binding,
             'port' => $port,
+            'confirm_ack_callback' => $confirmAckCallback,
+            'confirm_nack_callback' => $confirmNAckCallback,
+            'return_callback' => $returnCallback,
             'connector' => $connector,
             'result_expire' => $result_expire,
             'ssl_options' => $ssl_options,
@@ -163,11 +170,11 @@ abstract class CeleryAbstract
 
     private function SetDefaultValues($details)
     {
-        $defaultValues = array("host" => "", "login" => "", "password" => "", "vhost" => "", "exchange" => "celery", "binding" => "celery", "port" => 5672, "connector" => false, "persistent_messages" => false, "result_expire" => 0, "ssl_options" => array());
+        $defaultValues = array("host" => "", "login" => "", "password" => "", "vhost" => "", "exchange" => "celery", "binding" => "celery", "port" => 5672, 'confirm_ack_callback' => [], 'confirm_nack_callback' => [], 'return_callback' => [], "connector" => false, "persistent_messages" => false, "result_expire" => 0, "ssl_options" => array());
 
         $returnValue = array();
 
-        foreach (array('host', 'login', 'password', 'vhost', 'exchange', 'binding', 'port', 'connector', 'persistent_messages', 'result_expire', 'ssl_options') as $detail) {
+        foreach (array('host', 'login', 'password', 'vhost', 'exchange', 'binding', 'port', 'confirm_ack_callback', 'confirm_nack_callback', 'return_callback','connector', 'persistent_messages', 'result_expire', 'ssl_options') as $detail) {
             if (!array_key_exists($detail, $details)) {
                 $returnValue[$detail] = $defaultValues[$detail];
             } else $returnValue[$detail] = $details[$detail];
@@ -188,8 +195,7 @@ abstract class CeleryAbstract
         }
         //PECLAMQPConnector
         $amqp = AbstractAMQPConnector::GetConcrete($connection_details['connector']);
-        //AMQPSwooleConnection
-        $connection = self::InitializeAMQPConnection($connection_details);
+        $connection = self::InitializeAMQPConnection($amqp, $connection_details);
         $amqp->Connect($connection);
 
         if ($is_backend) {
@@ -223,10 +229,17 @@ abstract class CeleryAbstract
         $this->backend_connection = null;
     }
 
-    static function InitializeAMQPConnection($details)
+    /**
+     * gc的时候回收监听的链接
+     */
+    public function recycleLastAck()
+    {
+        return $this->broker_amqp->workerExitHandlerConfirm();
+    }
+
+    static function InitializeAMQPConnection($amqp, $details)
     {
         //AMQPLibConnector
-        $amqp = AbstractAMQPConnector::GetConcrete($details['connector']);
         return $amqp->GetConnectionObject($details);
     }
 
