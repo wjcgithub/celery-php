@@ -168,6 +168,11 @@ abstract class CeleryAbstract
 
     private $isConnected = false;
 
+    public function getBrokerConnectStatus()
+    {
+        return $this->broker_connection->isConnected();
+    }
+
     private function SetDefaultValues($details)
     {
         $defaultValues = array("host" => "", "login" => "", "password" => "", "vhost" => "", "exchange" => "celery", "binding" => "celery", "port" => 5672, 'confirm_ack_callback' => [], 'confirm_nack_callback' => [], 'return_callback' => [], "connector" => false, "persistent_messages" => false, "result_expire" => 0, "ssl_options" => array());

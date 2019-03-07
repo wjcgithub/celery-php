@@ -43,6 +43,7 @@
 require_once('amqp.php');
 
 use Dtsf\Core\Log;
+use Dtsf\Core\WorkerApp;
 use PhpAmqpLib\Connection\AMQPConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
@@ -67,6 +68,8 @@ class AMQPLibConnector extends AbstractAMQPConnector
     private $confirmAckTickTime = 5000; //单位s
     private $confirmAckTickTimeRandArr = [4500, 5000, 5500, 6000, 6500];
     private $wokerStopFlag = 1;
+    private $waitChan = null;  //该chan为了等待连接池中链接达到最大空闲时间后gc的时候等待最后ack完成在返回true, 否则该链接对象会被直接unset
+
 
     /**
      * PhpAmqpLib\Message\AMQPMessage object received from the queue
@@ -91,6 +94,7 @@ class AMQPLibConnector extends AbstractAMQPConnector
             $details['vhost']
         );
 
+        $this->waitChan = new \chan(1);
         $this->setChannel($details['exchange']);
         return $this->connection;
     }
@@ -164,13 +168,11 @@ class AMQPLibConnector extends AbstractAMQPConnector
     public function handlerConfirm()
     {
         $chan = $this->channels[$this->connectionDetails['exchange']]->pop(0.5);
-        if ($chan) {
+        if ($chan && $chan->getConnection()->isConnected()) {
             $chan->wait_for_pending_acks_returns();
             if ($this->getListenWokerStopFlag() == 3) {
                 $chan->close();
-                $this->connection->close();
-                swoole_timer_clear($this->confirmTick);
-                Log::info("worker {worker_id} execting ack end and exit finish.", ['{worker_id}' => posix_getppid()], 'mq_confirm_exit');
+                $this->ackFinish();
             } else {
                 $this->channels[$this->connectionDetails['exchange']]->push($chan);
             }
@@ -187,10 +189,47 @@ class AMQPLibConnector extends AbstractAMQPConnector
             if ($chan && $this->wokerStopFlag !== 3) {
                 $chan->wait_for_pending_acks_returns();
                 $this->channels[$this->connectionDetails['exchange']]->push($chan);
-                Log::info("worker {worker_id} execting ack end and exit start.", ['{worker_id}' => posix_getppid()], 'mq_confirm_exit');
+                Log::debug("worker {worker_id} execting lask ack on workerExitHandlerConfirm, and current app status is {status}."
+                    , ['{worker_id}' => posix_getppid(), '{status}'=>WorkerApp::getInstance()->serverStatus]
+                    , WorkerApp::getInstance()->debugDirName);
+                //设置停止flag
                 $this->wokerStopFlag = 3;
             }
         });
+
+        //如果是进程退出导致的，就不用阻塞等待，因为进程退出检测还有event会频繁请求,
+        // 相反如果是链接池资源回收的请求只触发一次workerExitHandlerConfirm，并立刻删除该对象，
+        // 所以要阻塞等待最后一次timer回收ack的事件完成在去gc中unset()当前链接对象
+        if (WorkerApp::getInstance()->serverStatus !== WorkerApp::WORKEREXIT) {
+            Log::debug("worker {worker_id} wait ack finish, and current app status is {status}."
+                , ['{worker_id}' => posix_getppid(), '{status}'=>WorkerApp::getInstance()->serverStatus]
+                , WorkerApp::getInstance()->debugDirName);
+            return $this->waitToStop();
+        }
+    }
+
+    /**
+     * 等待最后ack退出
+     * @return mixed
+     */
+    private function waitToStop()
+    {
+        return $this->waitChan->pop();
+    }
+
+    /**
+     * 完成最后ack
+     */
+    private function ackFinish()
+    {
+        $this->connection->close();
+        //设置worker状态为确认最后ack完成
+        WorkerApp::getInstance()->workerSetStatus(4);
+        $this->waitChan->push(1);
+        swoole_timer_clear($this->confirmTick);
+        Log::debug("worker {worker_id} exec last ack at tick, and current app status is {status}.",
+            ['{worker_id}' => posix_getppid(), '{status}'=>WorkerApp::getInstance()->serverStatus],
+            WorkerApp::getInstance()->debugDirName);
     }
 
     /**
