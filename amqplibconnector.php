@@ -167,15 +167,25 @@ class AMQPLibConnector extends AbstractAMQPConnector
      */
     public function handlerConfirm()
     {
-        $chan = $this->channels[$this->connectionDetails['exchange']]->pop(0.5);
-        if ($chan && $chan->getConnection()->isConnected()) {
-            $chan->wait_for_pending_acks_returns();
-            if ($this->getListenWokerStopFlag() == 3) {
-                $chan->close();
-                $this->ackFinish();
-            } else {
-                $this->channels[$this->connectionDetails['exchange']]->push($chan);
+        try{
+            $chan = $this->channels[$this->connectionDetails['exchange']]->pop(0.5);
+            if ($chan && $chan->getConnection()->isConnected()) {
+                $chan->wait_for_pending_acks_returns();
+                if ($this->getListenWokerStopFlag() == 3) {
+                    $chan->close();
+                    $this->ackFinish();
+                } else {
+                    $this->channels[$this->connectionDetails['exchange']]->push($chan);
+                }
             }
+        } catch (\Throwable $throwable) {
+            Log::error("{worker_id} ack error on handlerConfirm, and current app status is {status}, msg: {msg}."
+                , [
+                    '{worker_id}' => posix_getppid(),
+                    '{status}'=>WorkerApp::getInstance()->serverStatus,
+                    '{msg}'=> $throwable->getMessage().'====trace:'.$throwable->getTraceAsString()
+                ]
+                , WorkerApp::getInstance()->ackErrorDirName);
         }
     }
 
@@ -184,27 +194,37 @@ class AMQPLibConnector extends AbstractAMQPConnector
      */
     public function workerExitHandlerConfirm()
     {
-        go(function () {
-            $chan = $this->channels[$this->connectionDetails['exchange']]->pop(0.5);
-            if ($chan && $this->wokerStopFlag !== 3) {
-                $chan->wait_for_pending_acks_returns();
-                $this->channels[$this->connectionDetails['exchange']]->push($chan);
-                Log::debug("worker {worker_id} execting lask ack on workerExitHandlerConfirm, and current app status is {status}."
+        try{
+            go(function () {
+                $chan = $this->channels[$this->connectionDetails['exchange']]->pop(0.5);
+                if ($chan && $this->wokerStopFlag !== 3) {
+                    $chan->wait_for_pending_acks_returns();
+                    $this->channels[$this->connectionDetails['exchange']]->push($chan);
+                    Log::debug("worker {worker_id} execting lask ack on workerExitHandlerConfirm, and current app status is {status}."
+                        , ['{worker_id}' => posix_getppid(), '{status}'=>WorkerApp::getInstance()->serverStatus]
+                        , WorkerApp::getInstance()->debugDirName);
+                    //设置停止flag
+                    $this->wokerStopFlag = 3;
+                }
+            });
+
+            //如果是进程退出导致的，就不用阻塞等待，因为进程退出检测还有event会频繁请求,
+            // 相反如果是链接池资源回收的请求只触发一次workerExitHandlerConfirm，并立刻删除该对象，
+            // 所以要阻塞等待最后一次timer回收ack的事件完成在去gc中unset()当前链接对象
+            if (WorkerApp::getInstance()->serverStatus !== WorkerApp::WORKEREXIT) {
+                Log::debug("worker {worker_id} wait ack finish, and current app status is {status}."
                     , ['{worker_id}' => posix_getppid(), '{status}'=>WorkerApp::getInstance()->serverStatus]
                     , WorkerApp::getInstance()->debugDirName);
-                //设置停止flag
-                $this->wokerStopFlag = 3;
+                return $this->waitToStop();
             }
-        });
-
-        //如果是进程退出导致的，就不用阻塞等待，因为进程退出检测还有event会频繁请求,
-        // 相反如果是链接池资源回收的请求只触发一次workerExitHandlerConfirm，并立刻删除该对象，
-        // 所以要阻塞等待最后一次timer回收ack的事件完成在去gc中unset()当前链接对象
-        if (WorkerApp::getInstance()->serverStatus !== WorkerApp::WORKEREXIT) {
-            Log::debug("worker {worker_id} wait ack finish, and current app status is {status}."
-                , ['{worker_id}' => posix_getppid(), '{status}'=>WorkerApp::getInstance()->serverStatus]
-                , WorkerApp::getInstance()->debugDirName);
-            return $this->waitToStop();
+        } catch (\Throwable $throwable) {
+            Log::error("{worker_id} ack error on workerExitHandlerConfirm, and current app status is {status}, msg: {msg}."
+                , [
+                    '{worker_id}' => posix_getppid(),
+                    '{status}'=>WorkerApp::getInstance()->serverStatus,
+                    '{msg}'=> $throwable->getMessage().'====trace:'.$throwable->getTraceAsString()
+                ]
+                , WorkerApp::getInstance()->ackErrorDirName);
         }
     }
 
