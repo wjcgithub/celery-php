@@ -102,7 +102,8 @@ class Celery extends CeleryAbstract
     function __construct($host, $login, $password, $vhost,
                          $exchange = 'celery', $binding = 'celery', $port = 5672,
                          $confirmAckCallback = null, $confirmNAckCallback = null, $returnCallback = null,
-                         $connector = false, $persistent_messages = false, $result_expire = 0,
+                         $connector = false, $result_expire = 0, $socket_connect_timeout=3.0, $socket_timeout=3.0,
+                         $persistent_messages = false,
                          $ssl_options = array())
     {
         $broker_connection = array(
@@ -118,6 +119,8 @@ class Celery extends CeleryAbstract
             'return_callback' => $returnCallback,
             'connector' => $connector,
             'result_expire' => $result_expire,
+            'socket_connect_timeout'=>$socket_connect_timeout,
+            'socket_timeout'=>$socket_timeout,
             'ssl_options' => $ssl_options,
         );
         $backend_connection = $broker_connection;
@@ -175,11 +178,19 @@ abstract class CeleryAbstract
 
     private function SetDefaultValues($details)
     {
-        $defaultValues = array("host" => "", "login" => "", "password" => "", "vhost" => "", "exchange" => "celery", "binding" => "celery", "port" => 5672, 'confirm_ack_callback' => [], 'confirm_nack_callback' => [], 'return_callback' => [], "connector" => false, "persistent_messages" => false, "result_expire" => 0, "ssl_options" => array());
+        $defaultValues = array(
+            "host" => "", "login" => "", "password" => "",
+            "vhost" => "", "exchange" => "celery", "binding" => "celery",
+            "port" => 5672, 'confirm_ack_callback' => [], 'confirm_nack_callback' => [],
+            'return_callback' => [], "connector" => false, "persistent_messages" => false,
+            "result_expire" => 0, 'socket_connect_timeout'=> 3.0, 'socket_timeout'=>3.0,"ssl_options" => array());
 
         $returnValue = array();
 
-        foreach (array('host', 'login', 'password', 'vhost', 'exchange', 'binding', 'port', 'confirm_ack_callback', 'confirm_nack_callback', 'return_callback','connector', 'persistent_messages', 'result_expire', 'ssl_options') as $detail) {
+        foreach (array('host', 'login', 'password', 'vhost', 'exchange', 'binding', 'port',
+                     'confirm_ack_callback', 'confirm_nack_callback', 'return_callback','connector',
+                     'persistent_messages', 'result_expire', "result_expire", 'socket_connect_timeout',
+                     'socket_timeout', 'ssl_options') as $detail) {
             if (!array_key_exists($detail, $details)) {
                 $returnValue[$detail] = $defaultValues[$detail];
             } else $returnValue[$detail] = $details[$detail];
@@ -345,7 +356,6 @@ abstract class CeleryAbstract
         if ($this->broker_connection_details['persistent_messages']) {
             $properties['delivery_mode'] = 2;
         }
-
         $this->broker_connection_details['routing_key'] = $routing_key;
         $this->broker_connection_details['binding'] = $routing_key;
         $success = $this->broker_amqp->PostToExchange(
