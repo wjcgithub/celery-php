@@ -221,15 +221,18 @@ class AMQPLibConnector extends AbstractAMQPConnector
      */
     private function popChan($exchange, $popTime = 0.1, $beforeUseTryTimes = 3)
     {
-        if (!$this->connection->isConnected()) {
-            Log::debug('pid:{worker_id} goto reconnection mq'.$popTime.'----beforeUseTryTimes'.$beforeUseTryTimes,
-                ['{worker_id}'=>posix_getpid()], 'pop_channel');
-            if ($beforeUseTryTimes <= 0) {
-                $this->cleanChan();
-                $this->GetConnectionObject($this->connectionDetails);
-            }
-            return $this->popChan($exchange, $beforeUseTryTimes - 1);
-        }
+//        if (!$this->connection->isConnected()) {
+//            Log::debug('pid:{worker_id} goto reconnection mq'.$popTime.'----beforeUseTryTimes'.$beforeUseTryTimes,
+//                ['{worker_id}'=>posix_getpid()], 'pop_channel');
+//            if ($beforeUseTryTimes <= 0) {
+//                $this->cleanChan();
+//                $this->GetConnectionObject($this->connectionDetails);
+//            }
+//            return $this->popChan($exchange, $beforeUseTryTimes - 1);
+//        }else{
+//            Log::debug('pid:{worker_id} check connection fail , and poptime is'.$popTime.'----beforeUseTryTimes'.$beforeUseTryTimes,
+//                ['{worker_id}'=>posix_getpid()], 'check_connection');
+//        }
         $channel = $this->channels[$exchange]->pop($popTime);
         if (!is_object($channel)) {
             Log::debug('pid:{worker_id} objhash is {obj} reget channel of mq'.$popTime.'----beforeUseTryTimes'.$beforeUseTryTimes,
@@ -310,7 +313,7 @@ class AMQPLibConnector extends AbstractAMQPConnector
         //不能断开该链接,因为协程可能还没执行完毕
         $this->connection->close();
         //设置worker状态为确认最后ack完成
-        WorkerApp::getInstance()->workerSetStatus(WorkerApp::WORKERLASTACK);
+        WorkerApp::getInstance()->setWorkerStatus(WorkerApp::WORKERLASTACK);
         $this->waitChan->push(1);
         $this->cleanTimer();
         Log::debug("worker {worker_id} exec last ack at tick, and current app status is {status}.",
